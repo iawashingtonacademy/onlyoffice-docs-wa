@@ -1,0 +1,41 @@
+diff --git a/Common/sources/commondefines.js b/Common/sources/commondefines.js
+index 8f2d266..c1b7ca1 100644
+--- a/Common/sources/commondefines.js
++++ b/Common/sources/commondefines.js
+@@ -1222,8 +1222,8 @@ const FileStatus = {
+   NeedPassword: 9
+ };
+ 
+-const buildVersion = '4.1.2';
+-const buildNumber = 37;
++const buildVersion = '9.3.1';
++const buildNumber = 10;
+ 
+ exports.TaskQueueData = TaskQueueData;
+ exports.CMailMergeSendData = CMailMergeSendData;
+diff --git a/Common/sources/constants.js b/Common/sources/constants.js
+index 639f6c8..b784e7c 100644
+--- a/Common/sources/constants.js
++++ b/Common/sources/constants.js
+@@ -88,7 +88,7 @@ exports.LICENSE_RESULT = {
+   NotBefore: 16
+ };
+ 
+-exports.LICENSE_CONNECTIONS = 20;
++exports.LICENSE_CONNECTIONS = 9999;
+ exports.LICENSE_USERS = 3;
+ exports.LICENSE_EXPIRE_USERS_ONE_DAY = 24 * 60 * 60; // day in seconds
+ 
+diff --git a/Common/sources/license.js b/Common/sources/license.js
+index cdbdf7c..00287a8 100644
+--- a/Common/sources/license.js
++++ b/Common/sources/license.js
+@@ -34,7 +34,7 @@
+ 
+ const constants = require('./constants');
+ 
+-const buildDate = '6/29/2016';
++const buildDate = '10/12/2026';
+ const oBuildDate = new Date(buildDate);
+ 
+ exports.readLicense = async function () {
