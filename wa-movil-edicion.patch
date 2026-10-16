@@ -1,0 +1,1287 @@
+diff --git a/apps/common/mobile/lib/editor.jsx b/apps/common/mobile/lib/editor.jsx
+new file mode 100644
+index 00000000..1ab8542c
+--- /dev/null
++++ b/apps/common/mobile/lib/editor.jsx
+@@ -0,0 +1,82 @@
++import React from 'react';
++import { Device } from '../utils/device';
++import SvgIcon from './component/SvgIcon';
++import IconEditSettingsIos from '@common-ios-icons/icon-edit-settings.svg?ios';
++import IconEditSettingsAndroid from '@common-android-icons/icon-edit-settings.svg';
++import IconPlusIos from '@common-ios-icons/icon-plus.svg?ios';
++import IconPlusAndroid from '@common-android-icons/icon-plus.svg';
++import IconUndoIos from '@common-ios-icons/icon-undo.svg?ios';
++import IconUndoAndroid from '@common-android-icons/icon-undo.svg';
++import IconRedoIos from '@common-ios-icons/icon-redo.svg?ios';
++import IconRedoAndroid from '@common-android-icons/icon-redo.svg';
++import IconCopy from '@common-icons/icon-copy.svg';
++import IconCut from '@common-icons/icon-cut.svg';
++import IconPaste from '@common-icons/icon-paste.svg';
++
++export const icons = {
++    edit: { ios: IconEditSettingsIos, android: IconEditSettingsAndroid },
++    add: { ios: IconPlusIos, android: IconPlusAndroid },
++    undo: { ios: IconUndoIos, android: IconUndoAndroid },
++    redo: { ios: IconRedoIos, android: IconRedoAndroid },
++    copy: IconCopy,
++    cut: IconCut,
++    paste: IconPaste,
++};
++
++/**
++ * Platform-aware icon component that renders iOS or Android icon based on device
++ * @param {object} props
++ * @param {object} props.ios - iOS icon module (with .id property)
++ * @param {object} props.android - Android icon module (with .id property)
++ * @param {string} [props.className] - CSS class name
++ */
++export const PlatformIcon = ({ ios, android, className = 'icon icon-svg' }) => (
++    <SvgIcon
++        slot="media"
++        symbolId={(Device.ios ? ios : android).id}
++        className={className}
++    />
++);
++
++/**
++ * Factory to create object getter functions for focus objects
++ * @param {object} focusObjects - The storeFocusObjects instance
++ * @param {number} type - The Asc.c_oAscTypeSelectElement type to filter by
++ * @param {function} [extraCheck] - Optional additional filter function
++ * @returns {function} Getter function that returns the last matching object's value
++ */
++export const createObjectGetter = (focusObjects, type, extraCheck) => () => {
++    const match = focusObjects._focusObjects
++        .filter(obj => {
++            if (obj.get_ObjectType() !== type) return false;
++            return !extraCheck || extraCheck(obj);
++        })
++        .pop();
++    return match?.get_ObjectValue();
++};
++
++/**
++ * Builds standard object getters for a storeFocusObjects instance
++ * @param {object} storeFocusObjects - The store to add getters to
++ * @param {object} types - Map of getter names to {type, check?} configs
++ */
++export const buildFocusObjectGetters = (storeFocusObjects, types) => {
++    storeFocusObjects.intf = storeFocusObjects.intf || {};
++
++    for (const [name, config] of Object.entries(types)) {
++        storeFocusObjects.intf[name] = createObjectGetter(
++            storeFocusObjects,
++            config.type,
++            config.check
++        );
++    }
++};
++
++/**
++ * Common theme colors initialization - identical across all editors
++ */
++export const initThemeColors = () => {
++    Common.EditorApi.get().asc_registerCallback('asc_onSendThemeColors', (colors, standartColors) => {
++        Common.Utils.ThemeColor.setColors(colors, standartColors);
++    });
++};
+diff --git a/apps/documenteditor/mobile/src/lib/editor.jsx b/apps/documenteditor/mobile/src/lib/editor.jsx
+new file mode 100644
+index 00000000..181eaa34
+--- /dev/null
++++ b/apps/documenteditor/mobile/src/lib/editor.jsx
+@@ -0,0 +1,271 @@
++import React, { Fragment } from 'react';
++import { Link } from 'framework7-react';
++import { AddCommentController, EditCommentController } from '../../../../common/mobile/lib/controller/collaboration/Comments';
++import {
++    PlatformIcon,
++    buildFocusObjectGetters,
++    initThemeColors as commonInitThemeColors,
++    icons
++} from '../../../../common/mobile/lib/editor';
++
++/**
++ * Renders the edit and add toolbar buttons
++ * @param {object} props
++ * @param {boolean} props.disabled - Whether buttons should be disabled
++ * @param {function} props.onEditClick - Handler for edit button click
++ * @param {function} props.onAddClick - Handler for add button click
++ * @returns {JSX.Element} Toolbar buttons fragment
++ */
++export const getToolbarOptions = ({ disabled, onEditClick, onAddClick }) => (
++    <Fragment>
++        <Link iconOnly key='btn-edit' className={disabled ? 'disabled' : ''} href={false} onClick={onEditClick}>
++            <PlatformIcon {...icons.edit} />
++        </Link>
++        <Link iconOnly key='btn-add' className={disabled ? 'disabled' : ''} href={false} onClick={onAddClick}>
++            <PlatformIcon {...icons.add} />
++        </Link>
++    </Fragment>
++);
++
++/**
++ * Renders the undo and redo toolbar buttons
++ * @param {object} props
++ * @param {boolean} props.disabledUndo - Whether undo button should be disabled
++ * @param {boolean} props.disabledRedo - Whether redo button should be disabled
++ * @param {function} props.onUndoClick - Handler for undo button click
++ * @param {function} props.onRedoClick - Handler for redo button click
++ * @returns {JSX.Element} Undo/redo buttons fragment
++ */
++export const getUndoRedo = ({ disabledUndo, disabledRedo, onUndoClick, onRedoClick }) => (
++    <Fragment>
++        <Link iconOnly key='btn-undo' className={disabledUndo ? 'disabled' : ''} href={false} onClick={onUndoClick}>
++            <PlatformIcon {...icons.undo} />
++        </Link>
++        <Link iconOnly key='btn-redo' className={disabledRedo ? 'disabled' : ''} href={false} onClick={onRedoClick}>
++            <PlatformIcon {...icons.redo} />
++        </Link>
++    </Fragment>
++);
++
++/**
++ * Re-export of common theme colors initialization.
++ * Provides consistent API where each editor exports all its dependencies.
++ * TODO: Revisit as PoC matures - consumers could import directly from common.
++ */
++export const initThemeColors = commonInitThemeColors;
++
++/**
++ * Initializes font settings by registering API callback for editor fonts
++ * @param {object} storeTextSettings - MobX store for text settings
++ */
++export const initFonts = (storeTextSettings) => {
++    const api = Common.EditorApi.get();
++    api.asc_registerCallback('asc_onInitEditorFonts', (fonts, select) => {
++        storeTextSettings.initEditorFonts(fonts, select);
++    });
++};
++
++/**
++ * Initializes editor paragraph styles by registering API callbacks
++ * @param {object} storeParagraphSettings - MobX store for paragraph settings
++ */
++export const initEditorStyles = (storeParagraphSettings) => {
++    const api = Common.EditorApi.get();
++    api.asc_setParagraphStylesSizes(330, 38);
++    api.asc_registerCallback('asc_onInitEditorStyles', (styles) => {
++        storeParagraphSettings.initEditorStyles(styles);
++    });
++    api.asc_registerCallback('asc_onParaStyleName', (name) => {
++        storeParagraphSettings.changeParaStyleName(name);
++    });
++};
++
++/**
++ * Initializes focus object tracking and builds getter/filter methods on the store
++ * Sets up callbacks for tracking selected elements and provides methods to
++ * query specific object types (header, paragraph, table, link, shape, image, chart)
++ * @param {object} storeFocusObjects - MobX store for focus objects
++ */
++export const initFocusObjects = (storeFocusObjects) => {
++    Common.EditorApi.get().asc_registerCallback('asc_onFocusObject', (objects) => {
++        storeFocusObjects.resetFocusObjects(objects);
++    });
++
++    // Build standard getters using the common factory
++    buildFocusObjectGetters(storeFocusObjects, {
++        getHeaderObject: { type: Asc.c_oAscTypeSelectElement.Header },
++        getParagraphObject: { type: Asc.c_oAscTypeSelectElement.Paragraph },
++        getTableObject: { type: Asc.c_oAscTypeSelectElement.Table },
++        getLinkObject: { type: Asc.c_oAscTypeSelectElement.Hyperlink },
++        getShapeObject: {
++            type: Asc.c_oAscTypeSelectElement.Image,
++            check: obj => obj.get_ObjectValue()?.get_ShapeProperties()
++        },
++        getImageObject: {
++            type: Asc.c_oAscTypeSelectElement.Image,
++            check: obj => {
++                const val = obj.get_ObjectValue();
++                return val && val.get_ShapeProperties() === null && val.get_ChartProperties() === null;
++            }
++        },
++        getChartObject: {
++            type: Asc.c_oAscTypeSelectElement.Image,
++            check: obj => obj.get_ObjectValue()?.get_ChartProperties()
++        },
++    });
++
++    // Editor-specific: filterFocusObjects with document-specific logic
++    // To add a new type, add a handler: [Asc.c_oAscTypeSelectElement.X]: () => ['name']
++    const typeHandlers = {
++        [Asc.c_oAscTypeSelectElement.Paragraph]: () => ['text', 'paragraph'],
++        [Asc.c_oAscTypeSelectElement.Table]: () => ['table'],
++        [Asc.c_oAscTypeSelectElement.Hyperlink]: () => ['hyperlink'],
++        [Asc.c_oAscTypeSelectElement.Header]: () => ['header'],
++        [Asc.c_oAscTypeSelectElement.Image]: (obj, arr) => {
++            const val = obj.get_ObjectValue();
++            if (val.get_ChartProperties()) {
++                const idx = arr.indexOf('shape');
++                if (idx >= 0) arr.splice(idx, 1);
++                return ['chart'];
++            }
++            if (val.get_ShapeProperties() && !arr.includes('chart')) return ['shape'];
++            return ['image'];
++        },
++    };
++
++    storeFocusObjects.intf.filterFocusObjects = () => {
++        const arr = [];
++        for (const obj of storeFocusObjects._focusObjects) {
++            const handler = typeHandlers[obj.get_ObjectType()];
++            if (handler) arr.push(...handler(obj, arr));
++        }
++        return [...new Set(arr)];
++    };
++};
++
++/**
++ * Initializes table template styles by registering API callback
++ * @param {object} storeTableSettings - MobX store for table settings
++ */
++export const initTableTemplates = (storeTableSettings) => {
++    const api = Common.EditorApi.get();
++    api.asc_registerCallback('asc_onInitTableTemplates', (styles) => {
++        storeTableSettings.initTableTemplates(styles);
++    });
++};
++
++/**
++ * Registers callback to update chart style previews when chart styles change
++ * @param {object} storeChartSettings - MobX store for chart settings
++ * @param {object} storeFocusObjects - MobX store for focus objects
++ */
++export const updateChartStyles = (storeChartSettings, storeFocusObjects) => {
++    const api = Common.EditorApi.get();
++    api.asc_registerCallback('asc_onUpdateChartStyles', () => {
++        if (storeChartSettings.chartObject && storeChartSettings.chartObject.get_ChartProperties()) {
++            storeChartSettings.updateChartStyles(
++                api.asc_getChartPreviews(storeFocusObjects.chartObject.get_ChartProperties().getType())
++            );
++        }
++    });
++};
++
++/**
++ * Renders comment controller components for editing mode
++ * @returns {JSX.Element} Fragment containing AddCommentController and EditCommentController
++ */
++export const getEditCommentControllers = () => (
++    <Fragment>
++        <AddCommentController />
++        <EditCommentController />
++    </Fragment>
++);
++
++/**
++ * Context menu configuration and handlers for document editor
++ * @namespace
++ */
++export const ContextMenu = {
++    /**
++     * Maps the current selection state to context menu items
++     * Analyzes the selected elements and returns appropriate menu options
++     * based on object type, lock state, and user permissions
++     * @param {object} controller - The context menu controller instance
++     * @param {object} controller.props - Controller props with permissions and state
++     * @param {function} controller.props.t - Translation function
++     * @param {boolean} controller.props.isDisconnected - Whether user is disconnected
++     * @param {boolean} controller.props.canViewComments - Whether user can view comments
++     * @param {boolean} controller.props.canCoAuthoring - Whether co-authoring is enabled
++     * @param {boolean} controller.props.canComments - Whether user can add comments
++     * @param {boolean} controller.props.isProtected - Whether document is protected
++     * @param {number} controller.props.typeProtection - Type of document protection
++     * @param {boolean} controller.isComments - Whether comments exist on selection
++     * @returns {Array<{event: string, icon?: string, caption?: string}>} Menu items array
++     */
++    mapMenuItems(controller) {
++        const { t, isDisconnected, canViewComments, canCoAuthoring, canComments, isProtected, typeProtection } = controller.props;
++        const _t = t("ContextMenu", {returnObjects: true});
++        const api = Common.EditorApi.get();
++        const stack = api.getSelectedElements();
++        const canCopy = api.can_CopyCut();
++        const isAllowedEditing = !isProtected || typeProtection === Asc.c_oAscEDocProtect.TrackedChanges;
++
++        const contextTypeHandlers = {
++            [Asc.c_oAscTypeSelectElement.Header]: (val, state) => { state.locked = val.get_Locked(); },
++            [Asc.c_oAscTypeSelectElement.Paragraph]: (val, state) => { state.locked = val.get_Locked(); state.isText = true; },
++            [Asc.c_oAscTypeSelectElement.Image]: (val, state) => { state.locked = val.get_Locked(); state.isObject = true; },
++            [Asc.c_oAscTypeSelectElement.Table]: (val, state) => { state.locked = val.get_Locked(); state.isObject = true; },
++            [Asc.c_oAscTypeSelectElement.Hyperlink]: (val, state) => { state.isLink = true; },
++        };
++
++        const state = { isText: false, isObject: false, isLink: false, locked: false };
++        stack.forEach(item => {
++            const handler = contextTypeHandlers[item.get_ObjectType()];
++            if (handler) handler(item.get_ObjectValue(), state);
++        });
++        const { isText, isObject, isLink, locked } = state;
++
++        let itemsIcon = [],
++            itemsText = [];
++
++        if (canCopy) {
++            itemsIcon.push({ event: 'copy', icon: icons.copy.id });
++        }
++
++        if (!isDisconnected) {
++            if (canCopy && !locked && isAllowedEditing) {
++                itemsIcon.push({ event: 'cut', icon: icons.cut.id });
++            }
++            if (!locked && isAllowedEditing) {
++                itemsIcon.push({ event: 'paste', icon: icons.paste.id });
++            }
++            if (canViewComments && controller.isComments) {
++                itemsText.push({ caption: _t.menuViewComment, event: 'viewcomment' });
++            }
++            if (api.can_AddQuotedComment() !== false && canCoAuthoring && canComments && !locked && !(!isText && isObject)) {
++                itemsText.push({ caption: _t.menuAddComment, event: 'addcomment' });
++            }
++        }
++
++        if (isLink) {
++            itemsText.push({ caption: _t.menuOpenLink, event: 'openlink' });
++            if (isAllowedEditing) {
++                itemsText.push({ caption: t('ContextMenu.menuEditLink'), event: 'editlink' });
++            }
++        }
++
++        return itemsIcon.concat(itemsText);
++    },
++
++    /**
++     * Handles context menu item click events
++     * Document editor delegates most actions to the controller, returning false
++     * to indicate the action was not handled here
++     * @param {object} controller - The context menu controller instance
++     * @param {string} action - The action identifier from the clicked menu item
++     * @returns {boolean} False - indicates action should be handled by controller
++     */
++    handleMenuItemClick(controller, action) {
++        return false;
++    },
++};
+diff --git a/apps/documenteditor/mobile/src/lib/patch.jsx b/apps/documenteditor/mobile/src/lib/patch.jsx
+index 963aca45..646ae6e8 100644
+--- a/apps/documenteditor/mobile/src/lib/patch.jsx
++++ b/apps/documenteditor/mobile/src/lib/patch.jsx
+@@ -1,23 +1,19 @@
++import * as Editor from './editor';
+ 
+ const EditorUIController = () => {
+     return null
+ };
+ 
+-EditorUIController.isSupportEditFeature = () => {
+-    return false
+-};
+-
+-EditorUIController.getToolbarOptions = () => {
+-    return null
+-};
+-
+-EditorUIController.initFonts = () => null;
+-EditorUIController.initEditorStyles = () => null;
+-EditorUIController.initFocusObjects = () => null;
+-EditorUIController.initTableTemplates = () => null;
+-EditorUIController.ContextMenu = {
+-    mapMenuItems: () => [],
+-    handleMenuItemClick: () => true,
+-};
++EditorUIController.isSupportEditFeature = () => true;
++EditorUIController.getToolbarOptions = Editor.getToolbarOptions;
++EditorUIController.getUndoRedo = Editor.getUndoRedo;
++EditorUIController.initThemeColors = Editor.initThemeColors;
++EditorUIController.initFonts = Editor.initFonts;
++EditorUIController.initEditorStyles = Editor.initEditorStyles;
++EditorUIController.initFocusObjects = Editor.initFocusObjects;
++EditorUIController.initTableTemplates = Editor.initTableTemplates;
++EditorUIController.updateChartStyles = Editor.updateChartStyles;
++EditorUIController.getEditCommentControllers = Editor.getEditCommentControllers;
++// EditorUIController.ContextMenu = Editor.ContextMenu; // Disabled for EE parity
+ 
+ export default EditorUIController;
+diff --git a/apps/presentationeditor/mobile/src/lib/editor.jsx b/apps/presentationeditor/mobile/src/lib/editor.jsx
+new file mode 100644
+index 00000000..455d76bc
+--- /dev/null
++++ b/apps/presentationeditor/mobile/src/lib/editor.jsx
+@@ -0,0 +1,399 @@
++import React, { Fragment } from 'react';
++import { Link } from 'framework7-react';
++import { Device } from '../../../../common/mobile/utils/device';
++import { AddCommentController, EditCommentController } from '../../../../common/mobile/lib/controller/collaboration/Comments';
++import {
++    PlatformIcon,
++    buildFocusObjectGetters,
++    initThemeColors as commonInitThemeColors,
++    icons
++} from '../../../../common/mobile/lib/editor';
++
++/**
++ * Renders the edit and add toolbar buttons
++ * @param {object} props
++ * @param {boolean} props.disabledEdit - Whether edit button should be disabled
++ * @param {boolean} props.disabledAdd - Whether add button should be disabled
++ * @param {function} props.onEditClick - Handler for edit button click
++ * @param {function} props.onAddClick - Handler for add button click
++ * @returns {JSX.Element} Toolbar buttons fragment
++ */
++export const getToolbarOptions = ({ disabledEdit, disabledAdd, onEditClick, onAddClick }) => (
++    <Fragment>
++        <Link iconOnly className={disabledEdit ? 'disabled' : ''} id="btn-edit" href={false} onClick={onEditClick}>
++            <PlatformIcon {...icons.edit} />
++        </Link>
++        <Link iconOnly className={disabledAdd ? 'disabled' : ''} id="btn-add" href={false} onClick={onAddClick}>
++            <PlatformIcon {...icons.add} />
++        </Link>
++    </Fragment>
++);
++
++/**
++ * Renders the undo and redo toolbar buttons
++ * @param {object} props
++ * @param {boolean} props.disabledUndo - Whether undo button should be disabled
++ * @param {boolean} props.disabledRedo - Whether redo button should be disabled
++ * @param {function} props.onUndoClick - Handler for undo button click
++ * @param {function} props.onRedoClick - Handler for redo button click
++ * @returns {JSX.Element} Undo/redo buttons fragment
++ */
++export const getUndoRedo = ({ disabledUndo, disabledRedo, onUndoClick, onRedoClick }) => (
++    <Fragment>
++        <Link iconOnly className={disabledUndo ? 'disabled' : ''} onClick={onUndoClick}>
++            <PlatformIcon {...icons.undo} />
++        </Link>
++        <Link iconOnly className={disabledRedo ? 'disabled' : ''} onClick={onRedoClick}>
++            <PlatformIcon {...icons.redo} />
++        </Link>
++    </Fragment>
++);
++
++/**
++ * Re-export of common theme colors initialization.
++ * Provides consistent API where each editor exports all its dependencies.
++ * TODO: Revisit as PoC matures - consumers could import directly from common.
++ */
++export const initThemeColors = commonInitThemeColors;
++
++/**
++ * Initializes font settings by registering API callbacks for font changes
++ * Tracks font family, size, bold, italic, underline, and strikethrough states
++ * @param {object} storeTextSettings - MobX store for text settings
++ */
++export const initFonts = (storeTextSettings) => {
++    const api = Common.EditorApi.get();
++    api.asc_registerCallback('asc_onInitEditorFonts', (fonts, select) => {
++        storeTextSettings.initEditorFonts(fonts, select);
++    });
++    api.asc_registerCallback('asc_onFontFamily', (font) => {
++        storeTextSettings.resetFontName(font);
++    });
++    api.asc_registerCallback('asc_onFontSize', (size) => {
++        storeTextSettings.resetFontSize(size);
++    });
++    api.asc_registerCallback('asc_onBold', (isBold) => {
++        storeTextSettings.resetIsBold(isBold);
++    });
++    api.asc_registerCallback('asc_onItalic', (isItalic) => {
++        storeTextSettings.resetIsItalic(isItalic);
++    });
++    api.asc_registerCallback('asc_onUnderline', (isUnderline) => {
++        storeTextSettings.resetIsUnderline(isUnderline);
++    });
++    api.asc_registerCallback('asc_onStrikeout', (isStrikethrough) => {
++        storeTextSettings.resetIsStrikeout(isStrikethrough);
++    });
++};
++
++/**
++ * Initializes slide theme and layout styles by registering API callbacks
++ * Processes standard and custom themes, and tracks layout updates
++ * @param {object} storeSlideSettings - MobX store for slide settings
++ */
++export const initEditorStyles = (storeSlideSettings) => {
++    const api = Common.EditorApi.get();
++    api.asc_registerCallback('asc_onInitEditorStyles', (styles) => {
++        let standardThemes = styles[0] || [];
++        let customThemes = styles[1] || [];
++        let themes = [];
++        standardThemes.forEach((theme, index) => {
++            themes.push({ themeId: theme.get_Index(), offsety: 40 * index });
++        });
++        customThemes.forEach((theme) => {
++            themes.push({ imageUrl: theme.get_Image(), themeId: theme.get_Index(), offsety: 0 });
++        });
++        storeSlideSettings.addArrayThemes(themes);
++    });
++    api.asc_registerCallback('asc_onUpdateThemeIndex', (index) => {
++        storeSlideSettings.changeSlideThemeIndex(index);
++    });
++    api.asc_registerCallback('asc_onUpdateLayout', (layouts) => {
++        storeSlideSettings.addArrayLayouts(layouts);
++    });
++};
++
++/**
++ * Initializes focus object tracking and builds getter/filter methods on the store
++ * Sets up callbacks for tracking selected elements and provides methods to
++ * query specific object types (slide, paragraph, shape, table, chart, link, image)
++ * @param {object} storeFocusObjects - MobX store for focus objects
++ */
++export const initFocusObjects = (storeFocusObjects) => {
++    Common.EditorApi.get().asc_registerCallback('asc_onFocusObject', (objects) => {
++        storeFocusObjects.resetFocusObjects(objects);
++    });
++
++    // Build standard getters using the common factory
++    buildFocusObjectGetters(storeFocusObjects, {
++        getSlideObject: { type: Asc.c_oAscTypeSelectElement.Slide },
++        getParagraphObject: { type: Asc.c_oAscTypeSelectElement.Paragraph },
++        getShapeObject: { type: Asc.c_oAscTypeSelectElement.Shape },
++        getTableObject: { type: Asc.c_oAscTypeSelectElement.Table },
++        getChartObject: { type: Asc.c_oAscTypeSelectElement.Chart },
++        getLinkObject: { type: Asc.c_oAscTypeSelectElement.Hyperlink },
++        getImageObject: {
++            type: Asc.c_oAscTypeSelectElement.Image,
++            check: obj => obj.get_ObjectValue()
++        },
++    });
++
++    // Presentation-specific: filterFocusObjects with slide-specific logic
++    storeFocusObjects.intf.filterFocusObjects = () => {
++        const arr = [];
++        let hasUnlockedParagraph = false;
++
++        for (let object of storeFocusObjects._focusObjects) {
++            const type = object.get_ObjectType();
++            const value = object.get_ObjectValue();
++
++            if (Asc.c_oAscTypeSelectElement.Paragraph === type) {
++                if (!value.get_Locked()) {
++                    hasUnlockedParagraph = true;
++                }
++            } else if (Asc.c_oAscTypeSelectElement.Table === type) {
++                if (!value.get_Locked()) {
++                    arr.push('table');
++                    hasUnlockedParagraph = true;
++                }
++            } else if (Asc.c_oAscTypeSelectElement.Slide === type) {
++                if (!value.get_LockLayout() && !value.get_LockBackground() &&
++                    !value.get_LockTransition() && !value.get_LockTiming()) {
++                    arr.push('slide');
++                }
++            } else if (Asc.c_oAscTypeSelectElement.Image === type) {
++                if (!value.get_Locked()) {
++                    arr.push('image');
++                }
++            } else if (Asc.c_oAscTypeSelectElement.Chart === type) {
++                if (!value.get_Locked()) {
++                    arr.push('chart');
++                }
++            } else if (Asc.c_oAscTypeSelectElement.Shape === type) {
++                if (!value.get_FromChart()) {
++                    if (!value.get_Locked()) {
++                        arr.push('shape');
++                        hasUnlockedParagraph = true;
++                    }
++                }
++            } else if (Asc.c_oAscTypeSelectElement.Hyperlink === type) {
++                arr.push('hyperlink');
++            }
++        }
++
++        if (hasUnlockedParagraph && arr.indexOf('image') < 0) {
++            arr.unshift('text');
++        }
++
++        const result = arr.filter((value, index, self) => self.indexOf(value) === index);
++
++        // Remove hyperlink if no text
++        if (result.indexOf('hyperlink') > -1 && result.indexOf('text') < 0) {
++            result.splice(result.indexOf('hyperlink'), 1);
++        }
++        // Remove shape if chart is present
++        if (result.indexOf('chart') > -1 && result.indexOf('shape') > -1) {
++            result.splice(result.indexOf('shape'), 1);
++        }
++
++        return result;
++    };
++};
++
++/**
++ * Initializes table template styles by registering API callback
++ * @param {object} storeTableSettings - MobX store for table settings
++ */
++export const initTableTemplates = (storeTableSettings) => {
++    Common.EditorApi.get().asc_registerCallback('asc_onInitTableTemplates', (styles) => {
++        storeTableSettings.initTableTemplates(styles);
++    });
++};
++
++/**
++ * Registers callback to update chart style previews when chart styles change
++ * @param {object} storeChartSettings - MobX store for chart settings
++ * @param {object} storeFocusObjects - MobX store for focus objects
++ */
++export const updateChartStyles = (storeChartSettings, storeFocusObjects) => {
++    const api = Common.EditorApi.get();
++    api.asc_registerCallback('asc_onUpdateChartStyles', () => {
++        if (storeFocusObjects.chartObject) {
++            storeChartSettings.updateChartStyles(
++                api.asc_getChartPreviews(storeFocusObjects.chartObject.getType())
++            );
++        }
++    });
++};
++
++/**
++ * Renders comment controller components for editing mode
++ * @returns {JSX.Element} Fragment containing AddCommentController and EditCommentController
++ */
++export const getEditCommentControllers = () => (
++    <Fragment>
++        <AddCommentController />
++        <EditCommentController />
++    </Fragment>
++);
++
++/**
++ * Context menu configuration and handlers for presentation editor
++ * @namespace
++ */
++export const ContextMenu = {
++    /**
++     * Maps the current selection state to context menu items
++     * Analyzes selected elements (text, images, charts, shapes, tables, links, slides)
++     * and returns appropriate menu options based on lock state and permissions
++     * @param {object} controller - The context menu controller instance
++     * @param {object} controller.props - Controller props with permissions and state
++     * @param {function} controller.props.t - Translation function
++     * @param {boolean} controller.props.canViewComments - Whether user can view comments
++     * @param {boolean} controller.props.isDisconnected - Whether user is disconnected
++     * @param {boolean} controller.props.isVersionHistoryMode - Whether in version history mode
++     * @param {boolean} controller.isComments - Whether comments exist on selection
++     * @param {Array} controller.extraItems - Overflow items for mobile "More" menu
++     * @returns {Array<{event: string, icon?: string, caption?: string}>} Menu items array
++     */
++    mapMenuItems(controller) {
++        const { t } = controller.props;
++        const _t = t('ContextMenu', { returnObjects: true });
++        const { canViewComments, isDisconnected, isVersionHistoryMode } = controller.props;
++
++        const api = Common.EditorApi.get();
++        const stack = api.getSelectedElements();
++        const canCopy = api.can_CopyCut();
++
++        let itemsIcon = [];
++        let itemsText = [];
++
++        const typeFlags = {
++            [Asc.c_oAscTypeSelectElement.Paragraph]: 'isText',
++            [Asc.c_oAscTypeSelectElement.Image]: 'isImage',
++            [Asc.c_oAscTypeSelectElement.Chart]: 'isChart',
++            [Asc.c_oAscTypeSelectElement.Shape]: 'isShape',
++            [Asc.c_oAscTypeSelectElement.Table]: 'isTable',
++            [Asc.c_oAscTypeSelectElement.Hyperlink]: 'isLink',
++            [Asc.c_oAscTypeSelectElement.Slide]: 'isSlide',
++        };
++
++        const flags = { isText: false, isTable: false, isImage: false, isChart: false, isShape: false, isLink: false, isSlide: false };
++        stack.forEach((item) => {
++            const flag = typeFlags[item.get_ObjectType()];
++            if (flag) flags[flag] = true;
++        });
++
++        const { isText, isTable, isImage, isChart, isShape, isLink } = flags;
++        const isObject = isText || isImage || isChart || isShape || isTable;
++
++        if (canCopy && isObject) {
++            itemsIcon.push({ event: 'copy', icon: icons.copy.id });
++        }
++
++        if (stack.length > 0) {
++            let lastItem = stack[stack.length - 1];
++            let lastValue = lastItem.get_ObjectValue();
++            let locked = typeof lastValue.get_Locked === 'function' && lastValue.get_Locked();
++            if (!locked) {
++                locked = typeof lastValue.get_LockDelete === 'function' && lastValue.get_LockDelete();
++            }
++
++            if (!locked && !isDisconnected && !isVersionHistoryMode) {
++                if (canCopy && isObject) {
++                    itemsIcon.push({ event: 'cut', icon: icons.cut.id });
++                    // Move cut before copy
++                    if (itemsIcon.length === 2) {
++                        let tmp = itemsIcon[0];
++                        itemsIcon[0] = itemsIcon[1];
++                        itemsIcon[1] = tmp;
++                    }
++                }
++                itemsIcon.push({ event: 'paste', icon: icons.paste.id });
++
++                if (isTable && api.CheckBeforeMergeCells()) {
++                    itemsText.push({ caption: _t.menuMerge, event: 'merge' });
++                }
++                if (isTable && api.CheckBeforeSplitCells()) {
++                    itemsText.push({ caption: _t.menuSplit, event: 'split' });
++                }
++                if (isObject) {
++                    itemsText.push({ caption: _t.menuDelete, event: 'delete' });
++                }
++                if (isTable) {
++                    itemsText.push({ caption: _t.menuDeleteTable, event: 'deletetable' });
++                }
++
++                itemsText.push({ caption: _t.menuEdit, event: 'edit' });
++
++                if (!isLink && api.can_AddHyperlink() !== false) {
++                    itemsText.push({ caption: _t.menuAddLink, event: 'addlink' });
++                }
++
++                if (!(isText && isChart) && api.can_AddQuotedComment() !== false && canViewComments) {
++                    itemsText.push({ caption: _t.menuAddComment, event: 'addcomment' });
++                }
++
++                if (isLink) {
++                    itemsText.push({ caption: t('ContextMenu.menuEditLink'), event: 'editlink' });
++                }
++            }
++
++            if (controller.isComments && canViewComments) {
++                itemsText.push({ caption: _t.menuViewComment, event: 'viewcomment' });
++            }
++
++            if (isLink) {
++                itemsText.push({ caption: _t.menuOpenLink, event: 'openlink' });
++            }
++        }
++
++        // Truncate for mobile
++        if (Device.phone && itemsText.length > 2) {
++            controller.extraItems = itemsText.splice(2, itemsText.length, { caption: _t.menuMore, event: 'showActionSheet' });
++        } else if (itemsText.length > 4) {
++            controller.extraItems = itemsText.splice(3, itemsText.length, { caption: _t.menuMore, event: 'showActionSheet' });
++        }
++
++        return itemsIcon.concat(itemsText);
++    },
++
++    /**
++     * Handles context menu item click events for presentation-specific actions
++     * Processes cut, paste, merge/split cells, delete, edit, links, and comments
++     * @param {object} controller - The context menu controller instance
++     * @param {object} controller.props - Controller props
++     * @param {function} controller.props.openOptions - Function to open option panels
++     * @param {function} controller.showSplitModal - Function to show table split modal
++     * @param {function} controller.openLink - Function to open hyperlinks
++     * @param {string} action - The action identifier from the clicked menu item
++     * @returns {boolean} True if action was handled, false otherwise
++     */
++    handleMenuItemClick(controller, action) {
++        const api = Common.EditorApi.get();
++
++        const actionHandlers = {
++            cut: () => api.Cut(),
++            paste: () => api.Paste(),
++            addcomment: () => Common.Notifications.trigger('addcomment'),
++            merge: () => api.MergeCells(),
++            delete: () => api.asc_Remove(),
++            deletetable: () => api.remTable(),
++            split: () => controller.showSplitModal(),
++            edit: () => setTimeout(() => controller.props.openOptions('edit'), 400),
++            addlink: () => setTimeout(() => controller.props.openOptions('add-link'), 400),
++            editlink: () => setTimeout(() => controller.props.openOptions('edit-link'), 400),
++            openlink: () => {
++                const link = api.getSelectedElements().find(
++                    item => item.get_ObjectType() === Asc.c_oAscTypeSelectElement.Hyperlink
++                );
++                if (link) controller.openLink(link.get_ObjectValue().get_Value());
++            },
++        };
++
++        const handler = actionHandlers[action];
++        if (!handler) return false;
++        handler();
++        return true;
++    }
++};
+diff --git a/apps/presentationeditor/mobile/src/lib/patch.jsx b/apps/presentationeditor/mobile/src/lib/patch.jsx
+index ec7b37a2..4a0f5af5 100644
+--- a/apps/presentationeditor/mobile/src/lib/patch.jsx
++++ b/apps/presentationeditor/mobile/src/lib/patch.jsx
+@@ -1,6 +1,17 @@
++import * as Editor from './editor';
+ 
+ const EditorUIController = () => null;
+ 
+-EditorUIController.isSupportEditFeature = () => false;
++EditorUIController.isSupportEditFeature = () => true;
++EditorUIController.getToolbarOptions = Editor.getToolbarOptions;
++EditorUIController.getUndoRedo = Editor.getUndoRedo;
++EditorUIController.initThemeColors = Editor.initThemeColors;
++EditorUIController.initFonts = Editor.initFonts;
++EditorUIController.initEditorStyles = Editor.initEditorStyles;
++EditorUIController.initFocusObjects = Editor.initFocusObjects;
++EditorUIController.initTableTemplates = Editor.initTableTemplates;
++EditorUIController.updateChartStyles = Editor.updateChartStyles;
++EditorUIController.getEditCommentControllers = Editor.getEditCommentControllers;
++// EditorUIController.ContextMenu = Editor.ContextMenu; // Disabled for EE parity
+ 
+ export default EditorUIController;
+diff --git a/apps/spreadsheeteditor/mobile/src/lib/editor.jsx b/apps/spreadsheeteditor/mobile/src/lib/editor.jsx
+new file mode 100644
+index 00000000..54f1f7f5
+--- /dev/null
++++ b/apps/spreadsheeteditor/mobile/src/lib/editor.jsx
+@@ -0,0 +1,429 @@
++import React, { Fragment } from 'react';
++import { Link } from 'framework7-react';
++import { Device } from '../../../../common/mobile/utils/device';
++import {
++    PlatformIcon,
++    buildFocusObjectGetters,
++    initThemeColors as commonInitThemeColors,
++    icons
++} from '../../../../common/mobile/lib/editor';
++
++/**
++ * Toolbar option components for spreadsheet editor
++ * @namespace
++ */
++export const toolbarOptions = {
++    /**
++     * Renders the undo and redo toolbar buttons
++     * @param {object} props
++     * @param {boolean} props.disabledUndo - Whether undo button should be disabled
++     * @param {boolean} props.disabledRedo - Whether redo button should be disabled
++     * @param {function} props.onUndoClick - Handler for undo button click
++     * @param {function} props.onRedoClick - Handler for redo button click
++     * @returns {JSX.Element} Undo/redo buttons fragment
++     */
++    getUndoRedo: ({ disabledUndo, disabledRedo, onUndoClick, onRedoClick }) => (
++        <Fragment>
++            <Link iconOnly className={disabledUndo ? 'disabled' : ''} onClick={onUndoClick}>
++                <PlatformIcon {...icons.undo} />
++            </Link>
++            <Link iconOnly className={disabledRedo ? 'disabled' : ''} onClick={onRedoClick}>
++                <PlatformIcon {...icons.redo} />
++            </Link>
++        </Fragment>
++    ),
++    /**
++     * Renders the edit and add toolbar buttons
++     * @param {object} props
++     * @param {boolean} props.disabled - Whether buttons should be disabled
++     * @param {function} props.onEditClick - Handler for edit button click
++     * @param {function} props.onAddClick - Handler for add button click
++     * @returns {JSX.Element} Toolbar buttons fragment
++     */
++    getEditOptions: ({ disabled, onEditClick, onAddClick }) => (
++        <Fragment>
++            <Link iconOnly className={disabled ? 'disabled' : ''} id="btn-edit" href={false} onClick={onEditClick}>
++                <PlatformIcon {...icons.edit} />
++            </Link>
++            <Link iconOnly className={disabled ? 'disabled' : ''} id="btn-add" href={false} onClick={onAddClick}>
++                <PlatformIcon {...icons.add} />
++            </Link>
++        </Fragment>
++    )
++};
++
++/**
++ * Re-export of common theme colors initialization.
++ * Provides consistent API where each editor exports all its dependencies.
++ * TODO: Revisit as PoC matures - consumers could import directly from common.
++ */
++export const initThemeColors = commonInitThemeColors;
++
++/**
++ * Initializes cell info tracking and selection handling
++ * Registers callbacks for selection changes and builds getter methods on the store
++ * @param {object} props - Props containing MobX stores
++ * @param {object} props.storeFocusObjects - Store for tracking focused objects
++ * @param {object} props.storeCellSettings - Store for cell settings
++ * @param {object} props.storeTextSettings - Store for text settings
++ * @param {object} props.storeChartSettings - Store for chart settings
++ */
++export const initCellInfo = (props) => {
++    const api = Common.EditorApi.get();
++    const storeFocusObjects = props.storeFocusObjects;
++    const storeCellSettings = props.storeCellSettings;
++    const storeTextSettings = props.storeTextSettings;
++    const storeChartSettings = props.storeChartSettings;
++
++    api.asc_registerCallback('asc_onSelectionChanged', (cellInfo) => {
++        storeFocusObjects.resetCellInfo(cellInfo);
++        storeFocusObjects.setIsLocked(cellInfo);
++        storeCellSettings.initCellSettings(cellInfo);
++        storeTextSettings.initTextSettings(cellInfo);
++
++        let graphicObjects = api.asc_getGraphicObjectProps();
++        if (graphicObjects.length > 0) {
++            storeFocusObjects.resetFocusObjects(graphicObjects);
++            if (storeFocusObjects.focusOn !== 'obj') {
++                storeFocusObjects.changeFocus(true);
++            }
++            if (storeFocusObjects.chartObject) {
++                storeChartSettings.updateChartStyles(
++                    api.asc_getChartPreviews(storeFocusObjects.chartObject.get_ChartProperties().getType())
++                );
++            }
++        } else if (storeFocusObjects.focusOn !== 'cell') {
++            storeFocusObjects.changeFocus(false);
++        }
++    });
++
++    // Build standard getters using the common factory
++    buildFocusObjectGetters(storeFocusObjects, {
++        getParagraphObject: { type: Asc.c_oAscTypeSelectElement.Paragraph },
++        getShapeObject: {
++            type: Asc.c_oAscTypeSelectElement.Image,
++            check: obj => obj.get_ObjectValue()?.get_ShapeProperties()
++        },
++        getImageObject: { type: Asc.c_oAscTypeSelectElement.Image },
++        getChartObject: {
++            type: Asc.c_oAscTypeSelectElement.Image,
++            check: obj => obj.get_ObjectValue()?.get_ChartProperties()
++        },
++    });
++
++    // Spreadsheet-specific: getSelections with cell-specific logic
++    storeFocusObjects.intf.getSelections = () => {
++        const selections = [];
++        let isCell, isRow, isCol, isAll, isChart, isImage, isShape, isShapeText, isChartText;
++        let locked = false;
++
++        const selectionTypeMap = {
++            [Asc.c_oAscSelectionType.RangeCells]: 'isCell',
++            [Asc.c_oAscSelectionType.RangeRow]: 'isRow',
++            [Asc.c_oAscSelectionType.RangeCol]: 'isCol',
++            [Asc.c_oAscSelectionType.RangeMax]: 'isAll',
++            [Asc.c_oAscSelectionType.RangeImage]: 'isImage',
++            [Asc.c_oAscSelectionType.RangeShape]: 'isShape',
++            [Asc.c_oAscSelectionType.RangeChart]: 'isChart',
++            [Asc.c_oAscSelectionType.RangeChartText]: 'isChartText',
++            [Asc.c_oAscSelectionType.RangeShapeText]: 'isShapeText',
++        };
++
++        const selType = storeFocusObjects._cellInfo.asc_getSelectionType();
++        const flags = { isCell, isRow, isCol, isAll, isChart, isImage, isShape, isShapeText, isChartText };
++        const flagName = selectionTypeMap[selType];
++        if (flagName) flags[flagName] = true;
++
++        ({ isCell, isRow, isCol, isAll, isChart, isImage, isShape, isShapeText, isChartText } = flags);
++
++        // Determine graphic object types
++        if (isImage || isShape || isChart || isShapeText || isChartText) {
++            const graphicObjects = Common.EditorApi.get().asc_getGraphicObjectProps();
++            if (isImage || isShape || isChart) {
++                isImage = isShape = isChart = false;
++            }
++            graphicObjects
++                .filter(obj => obj.asc_getObjectType() === Asc.c_oAscTypeSelectElement.Image)
++                .forEach(obj => {
++                    const val = obj.asc_getObjectValue();
++                    locked = locked || val.asc_getLocked();
++                    if (isShapeText || isChartText) return; // Only need locked state
++                    const shapeProps = val.asc_getShapeProperties();
++                    if (shapeProps) {
++                        shapeProps.asc_getFromChart() ? isChart = true : isShape = true;
++                    } else if (val.asc_getChartProperties()) {
++                        isChart = true;
++                    } else {
++                        isImage = true;
++                    }
++                });
++        }
++
++        // Build selections array based on detected types
++        if (isChart || isChartText) {
++            selections.push('chart');
++            if (isChartText) selections.push('text');
++        } else if ((isShape || isShapeText) && !isImage) {
++            selections.push('shape');
++            if (isShapeText) selections.push('text');
++        } else if (isImage) {
++            selections.push('image');
++            if (isShape) selections.push('shape');
++        } else {
++            selections.push('cell');
++            if (storeFocusObjects._cellInfo.asc_getHyperlink()) {
++                selections.push('hyperlink');
++            }
++        }
++
++        return selections;
++    };
++};
++
++/**
++ * Initializes cell styles by registering API callback
++ * @param {object} storeCellSettings - MobX store for cell settings
++ */
++export const initEditorStyles = (storeCellSettings) => {
++    Common.EditorApi.get().asc_registerCallback('asc_onInitEditorStyles', (styles) => {
++        storeCellSettings.initCellStyles(styles);
++    });
++};
++
++/**
++ * Initializes font settings by registering API callbacks for editor fonts and selection changes
++ * @param {object} props - Props containing MobX stores
++ * @param {object} props.storeCellSettings - Store for cell settings
++ * @param {object} props.storeTextSettings - Store for text settings
++ */
++export const initFonts = (props) => {
++    const api = Common.EditorApi.get();
++    const storeCellSettings = props.storeCellSettings;
++    const storeTextSettings = props.storeTextSettings;
++
++    api.asc_registerCallback('asc_onInitEditorFonts', (fonts, select) => {
++        storeCellSettings.initEditorFonts(fonts, select);
++        storeTextSettings.initEditorFonts(fonts, select);
++    });
++
++    api.asc_registerCallback('asc_onEditorSelectionChanged', (fontObj) => {
++        storeCellSettings.initFontSettings(fontObj);
++        storeTextSettings.initFontSettings(fontObj);
++    });
++};
++
++
++/**
++ * Context menu configuration and handlers for spreadsheet editor
++ * @namespace
++ */
++export const ContextMenu = {
++    /**
++     * Maps the current selection state to context menu items
++     * Analyzes cell info, selection type, and permissions to build menu options
++     * Handles cells, rows, columns, images, shapes, charts, and hyperlinks
++     * @param {object} controller - The context menu controller instance
++     * @param {object} controller.props - Controller props with permissions and state
++     * @param {function} controller.props.t - Translation function
++     * @param {boolean} controller.props.canViewComments - Whether user can view comments
++     * @param {boolean} controller.props.isDisconnected - Whether user is disconnected
++     * @param {object} controller.props.wsProps - Worksheet protection properties
++     * @param {boolean} controller.props.wsLock - Whether worksheet is locked
++     * @param {boolean} controller.props.isResolvedComments - Whether to show resolved comments
++     * @param {boolean} controller.props.isVersionHistoryMode - Whether in version history mode
++     * @param {Array} controller.extraItems - Overflow items for mobile "More" menu
++     * @returns {Array<{event: string, icon?: string, caption?: string}>} Menu items array
++     */
++    mapMenuItems(controller) {
++        const { t } = controller.props;
++        const _t = t('ContextMenu', { returnObjects: true });
++        const { canViewComments, isDisconnected, wsProps, wsLock, isResolvedComments, isVersionHistoryMode } = controller.props;
++
++        const api = Common.EditorApi.get();
++        const cellInfo = api.asc_getCellInfo();
++        const isPivot = !!cellInfo.asc_getPivotTableInfo();
++        const canFillHandle = api.asc_canFillHandle();
++        const itemsIcon = [];
++        const itemsText = [];
++
++        let isCell, isRow, isCol, isAll, isChart, isImage, isShape, isShapeText, isChartText;
++        let locked = cellInfo.asc_getLocked();
++
++        const selType = cellInfo.asc_getSelectionType();
++        const xfs = cellInfo.asc_getXfs();
++        const comments = cellInfo.asc_getComments();
++        const isSolved = comments[0] && comments[0].asc_getSolved();
++
++        const selectionTypeMap = {
++            [Asc.c_oAscSelectionType.RangeCells]: 'isCell',
++            [Asc.c_oAscSelectionType.RangeRow]: 'isRow',
++            [Asc.c_oAscSelectionType.RangeCol]: 'isCol',
++            [Asc.c_oAscSelectionType.RangeMax]: 'isAll',
++            [Asc.c_oAscSelectionType.RangeImage]: 'isImage',
++            [Asc.c_oAscSelectionType.RangeShape]: 'isShape',
++            [Asc.c_oAscSelectionType.RangeChart]: 'isChart',
++            [Asc.c_oAscSelectionType.RangeChartText]: 'isChartText',
++            [Asc.c_oAscSelectionType.RangeShapeText]: 'isShapeText',
++        };
++
++        const flags = { isCell, isRow, isCol, isAll, isChart, isImage, isShape, isShapeText, isChartText };
++        const flagName = selectionTypeMap[selType];
++        if (flagName) flags[flagName] = true;
++        ({ isCell, isRow, isCol, isAll, isChart, isImage, isShape, isShapeText, isChartText } = flags);
++
++        if ((isImage || isShape || isChart || isShapeText || isChartText) && wsProps.Objects) {
++            return [];
++        }
++
++        if (!locked && (isImage || isShape || isChart || isShapeText || isChartText)) {
++            api.asc_getGraphicObjectProps().every((obj) => {
++                if (obj.asc_getObjectType() == Asc.c_oAscTypeSelectElement.Image) {
++                    locked = obj.asc_getObjectValue().asc_getLocked();
++                }
++                return !locked;
++            });
++        }
++
++        if (locked || api.isCellEdited || isDisconnected) {
++            itemsIcon.push({ event: 'copy', icon: icons.copy.id });
++        } else if (!isVersionHistoryMode) {
++            itemsIcon.push({ event: 'cut', icon: icons.cut.id });
++            itemsIcon.push({ event: 'copy', icon: icons.copy.id });
++            itemsIcon.push({ event: 'paste', icon: icons.paste.id });
++
++            if (isImage || isShape || isChart || isShapeText || isChartText) {
++                itemsText.push({ caption: _t.menuEdit, event: 'edit' });
++            } else {
++                if (isCol) {
++                    if (!wsProps.FormatColumns) {
++                        itemsText.push({ caption: _t.menuHide, event: 'hide' });
++                        itemsText.push({ caption: _t.menuShow, event: 'show' });
++                    }
++                } else if (isRow) {
++                    if (!wsProps.FormatRows) {
++                        itemsText.push({ caption: _t.menuHide, event: 'hide' });
++                        itemsText.push({ caption: _t.menuShow, event: 'show' });
++                    }
++                } else if (isCell) {
++                    if (!locked) {
++                        itemsText.push({ caption: _t.menuCell, event: 'edit' });
++                    }
++                    if (cellInfo.asc_getMerge() != Asc.c_oAscMergeOptions.None) {
++                        if (!wsProps.FormatCells) {
++                            itemsText.push({ caption: _t.menuUnmerge, event: 'unmerge' });
++                        }
++                    } else if (cellInfo.asc_getMerge() != Asc.c_oAscMergeOptions.Merge) {
++                        if (!wsProps.FormatCells) {
++                            itemsText.push({ caption: _t.menuMerge, event: 'merge' });
++                        }
++                    }
++                    if (!wsProps.FormatCells) {
++                        itemsText.push(xfs.asc_getWrapText()
++                            ? { caption: _t.menuUnwrap, event: 'unwrap' }
++                            : { caption: _t.menuWrap, event: 'wrap' }
++                        );
++                    }
++                }
++
++                itemsText.push({
++                    caption: api.asc_getSheetViewSettings().asc_getIsFreezePane()
++                        ? _t.menuUnfreezePanes
++                        : _t.menuFreezePanes,
++                    event: 'freezePanes'
++                });
++            }
++
++            if (!isPivot && !wsLock) {
++                itemsText.push({ caption: _t.menuDelete, event: 'del' });
++            }
++
++            if (canViewComments) {
++                if (comments && comments.length && (!isSolved && !isResolvedComments || isResolvedComments)) {
++                    itemsText.push({ caption: _t.menuViewComment, event: 'viewcomment' });
++                }
++                if (isCell && comments && !comments.length && !wsProps.Objects) {
++                    itemsText.push({ caption: _t.menuAddComment, event: 'addcomment' });
++                }
++            }
++        }
++
++        // Hyperlinks
++        if (cellInfo.asc_getHyperlink() && !cellInfo.asc_getMultiselect()) {
++            if (!isVersionHistoryMode) {
++                itemsText.push({ caption: t('ContextMenu.menuEditLink'), event: 'editlink' });
++            }
++            itemsText.push({ caption: _t.menuOpenLink, event: 'openlink' });
++        } else if (!cellInfo.asc_getHyperlink() && !cellInfo.asc_getMultiselect() && !isPivot && !wsProps.InsertHyperlinks && !isVersionHistoryMode) {
++            itemsText.push({ caption: _t.menuAddLink, event: 'addlink' });
++        }
++
++        // Shape hyperlinks
++        if (isShapeText && api.asc_canAddShapeHyperlink()) {
++            if (cellInfo.asc_getHyperlink() || wsProps.InsertHyperlinks) {
++                if (!isVersionHistoryMode) {
++                    itemsText.push({ caption: t('ContextMenu.menuEditLink'), event: 'editlink' });
++                }
++                itemsText.push({ caption: _t.menuOpenLink, event: 'openlink' });
++            } else if (!isVersionHistoryMode) {
++                itemsText.push({ caption: _t.menuAddLink, event: 'addlink' });
++            }
++        }
++
++        if (canFillHandle) {
++            itemsText.push({ caption: t('ContextMenu.menuAutofill'), event: 'autofillCells' });
++        }
++
++        // Truncate for mobile
++        if (Device.phone && itemsText.length > 2) {
++            controller.extraItems = itemsText.splice(2, itemsText.length, { caption: _t.menuMore, event: 'showActionSheet' });
++        } else if (itemsText.length > 4) {
++            controller.extraItems = itemsText.splice(3, itemsText.length, { caption: _t.menuMore, event: 'showActionSheet' });
++        }
++
++        return itemsIcon.concat(itemsText);
++    },
++
++    /**
++     * Handles context menu item click events for spreadsheet-specific actions
++     * Processes cut, paste, delete, merge, wrap, hide/show, freeze panes, and more
++     * @param {object} controller - The context menu controller instance
++     * @param {object} controller.props - Controller props
++     * @param {function} controller.props.openOptions - Function to open option panels
++     * @param {function} controller.onMergeCells - Function to handle cell merge
++     * @param {string} action - The action identifier from the clicked menu item
++     * @returns {boolean} True if action was handled, false otherwise
++     */
++    handleMenuItemClick(controller, action) {
++        const api = Common.EditorApi.get();
++        const cellInfo = api.asc_getCellInfo();
++        const isRow = cellInfo.asc_getSelectionType() === Asc.c_oAscSelectionType.RangeRow;
++
++        const deleteActions = {
++            [Asc.c_oAscSelectionType.RangeRow]: () => api.asc_deleteCells(Asc.c_oAscDeleteOptions.DeleteRows),
++            [Asc.c_oAscSelectionType.RangeCol]: () => api.asc_deleteCells(Asc.c_oAscDeleteOptions.DeleteColumns),
++        };
++
++        const actionHandlers = {
++            cut: () => api.asc_Cut(),
++            paste: () => api.asc_Paste(),
++            addcomment: () => Common.Notifications.trigger('addcomment'),
++            del: () => (deleteActions[cellInfo.asc_getSelectionType()] || (() => api.asc_emptyCells(Asc.c_oAscCleanOptions.All)))(),
++            wrap: () => api.asc_setCellTextWrap(true),
++            unwrap: () => api.asc_setCellTextWrap(false),
++            edit: () => setTimeout(() => controller.props.openOptions('edit'), 400),
++            merge: () => controller.onMergeCells(),
++            unmerge: () => api.asc_mergeCells(Asc.c_oAscMergeOptions.None),
++            hide: () => api[isRow ? 'asc_hideRows' : 'asc_hideColumns'](),
++            show: () => api[isRow ? 'asc_showRows' : 'asc_showColumns'](),
++            addlink: () => setTimeout(() => controller.props.openOptions('add-link'), 400),
++            editlink: () => setTimeout(() => controller.props.openOptions('edit-link'), 400),
++            freezePanes: () => api.asc_freezePane(),
++            autofillCells: () => api.asc_fillHandleDone(),
++        };
++
++        const handler = actionHandlers[action];
++        if (!handler) return false;
++        handler();
++        return true;
++    }
++};
+diff --git a/apps/spreadsheeteditor/mobile/src/lib/patch.jsx b/apps/spreadsheeteditor/mobile/src/lib/patch.jsx
+index ec7b37a2..a1b3d8b8 100644
+--- a/apps/spreadsheeteditor/mobile/src/lib/patch.jsx
++++ b/apps/spreadsheeteditor/mobile/src/lib/patch.jsx
+@@ -1,6 +1,13 @@
++import * as Editor from './editor';
+ 
+ const EditorUIController = () => null;
+ 
+-EditorUIController.isSupportEditFeature = () => false;
++EditorUIController.isSupportEditFeature = () => true;
++EditorUIController.toolbarOptions = Editor.toolbarOptions;
++EditorUIController.initThemeColors = Editor.initThemeColors;
++EditorUIController.initCellInfo = Editor.initCellInfo;
++EditorUIController.initEditorStyles = Editor.initEditorStyles;
++EditorUIController.initFonts = Editor.initFonts;
++// EditorUIController.ContextMenu = Editor.ContextMenu; // Disabled for EE parity
+ 
+ export default EditorUIController;
