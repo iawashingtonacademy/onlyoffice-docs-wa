@@ -1,0 +1,71 @@
+--- a/apps/common/mobile/lib/controller/ContextMenu.jsx
++++ b/apps/common/mobile/lib/controller/ContextMenu.jsx
+@@ -107,26 +107,28 @@
+             const subNav = document.querySelector('.subnavbar');
+             const rect = subNav.getBoundingClientRect();
+ 
++            // WA 2026-10-25: React 18+ batches setState, so this.state.items was still the old (empty) list here and the
++            // menu never opened on the first tap. Open it once the new items are rendered.
+             this.setState({
+                 items: this.initMenuItems(),
+                 extraItems: this.initExtraItems()
+-            });
++            }, () => {
++                if ( this.state.items.length > 0 ) {
++                    const api = Common.EditorApi.get();
+ 
+-            if ( this.state.items.length > 0 ) {
+-                const api = Common.EditorApi.get();
+-    
+-                this.$targetEl.css({left: `${x}px`, top: y < rect.bottom ? `${rect.bottom}px` : `${y}px`});
+-                const popover = f7.popover.open(idContextMenuElement, idCntextMenuTargetElement);
++                    this.$targetEl.css({left: `${x}px`, top: y < rect.bottom ? `${rect.bottom}px` : `${y}px`});
++                    const popover = f7.popover.open(idContextMenuElement, idCntextMenuTargetElement);
+ 
+-                if (Device.android)
+-                    this.offsetPopoverTop(popover);
++                    if (Device.android)
++                        this.offsetPopoverTop(popover);
+ 
+-                this.setState(state => {
+-                    return {opened: true}
+-                });
++                    this.setState(state => {
++                        return {opened: true}
++                    });
+ 
+-                api.asc_enableKeyEvents(true);
+-            }
++                    api.asc_enableKeyEvents(true);
++                }
++            });
+         }
+     }
+ 
+--- a/apps/spreadsheeteditor/mobile/src/lib/patch.jsx
++++ b/apps/spreadsheeteditor/mobile/src/lib/patch.jsx
+@@ -8,6 +8,6 @@
+ EditorUIController.initCellInfo = Editor.initCellInfo;
+ EditorUIController.initEditorStyles = Editor.initEditorStyles;
+ EditorUIController.initFonts = Editor.initFonts;
+-// EditorUIController.ContextMenu = Editor.ContextMenu; // Disabled for EE parity
++EditorUIController.ContextMenu = Editor.ContextMenu; // WA 2026-10-25: menú de celda (Cortar/Copiar/Pegar/Editar) en celular
+ 
+ export default EditorUIController;
+--- a/apps/spreadsheeteditor/mobile/src/lib/editor.jsx
++++ b/apps/spreadsheeteditor/mobile/src/lib/editor.jsx
+@@ -308,11 +308,12 @@
+                     if (!locked) {
+                         itemsText.push({ caption: _t.menuCell, event: 'edit' });
+                     }
+-                    if (cellInfo.asc_getMerge() != Asc.c_oAscMergeOptions.None) {
++                    // WA 2026-10-25: a single cell reports Disabled (not None), so "!= None" offered Unmerge on every cell.
++                    if (cellInfo.asc_getMerge() == Asc.c_oAscMergeOptions.Merge) {
+                         if (!wsProps.FormatCells) {
+                             itemsText.push({ caption: _t.menuUnmerge, event: 'unmerge' });
+                         }
+-                    } else if (cellInfo.asc_getMerge() != Asc.c_oAscMergeOptions.Merge) {
++                    } else if (cellInfo.asc_getMerge() == Asc.c_oAscMergeOptions.None) {
+                         if (!wsProps.FormatCells) {
+                             itemsText.push({ caption: _t.menuMerge, event: 'merge' });
+                         }
